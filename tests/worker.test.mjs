@@ -15,4 +15,19 @@ test('Connection test uses actual selected model and parameters, not merely a mo
 globalThis.fetch=async()=>Response.json({choices:[{message:{content:''}}]});const empty=await connect({...config,action:'test'});assert.equal(empty.status,422);assert.equal((await empty.json()).code,'EMPTY_CONTENT');
 }finally{globalThis.fetch=original;}});
 test('Native connection route sends x-goog-api-key and reads native model content',async()=>{const original=globalThis.fetch;try{globalThis.fetch=async(url,options)=>{assert.equal(String(url),'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');assert.equal(options.headers['x-goog-api-key'],'AQ.fake-key');assert.ok(!options.headers.Authorization);return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:'OK'}]}}]});};const res=await connect({...config,provider:'gemini',baseURL:'https://generativelanguage.googleapis.com/v1beta',model:'gemini-3.8-flash',key:undefined,Authorization:'Bearer AQ.fake-key',action:'test'});assert.equal(res.status,200);assert.equal((await res.json()).success,true);}finally{globalThis.fetch=original;}});
+test('HTTP IP proxy is relayed for model list and generation and private targets are refused',async()=>{
+ const original=globalThis.fetch;const seen=[];
+ try{globalThis.fetch=async(url,options)=>{const href=String(url);seen.push(href);if(href.endsWith('/models')){assert.equal(options.method,'GET');return Response.json({data:[{id:'proxy-model'}]});}assert.equal(options.redirect,'manual');assert.equal(options.headers.Authorization,'Bearer test-key-no-real-secret');return Response.json({choices:[{finish_reason:'stop',message:{content:'OK'}}]});};
+  const ip={...config,provider:'custom',baseURL:'http://1.2.3.4:8080/v1',model:'proxy-model'};
+  const models=await connect({...ip,action:'models'});assert.equal(models.status,200);assert.equal((await models.json()).models[0].id,'proxy-model');
+  const generated=await send({...ip,prompt:'hello'});assert.equal(generated.status,200);assert.equal((await generated.json()).text,'OK');
+  assert.deepEqual(seen,['http://1.2.3.4:8080/v1/models','http://1.2.3.4:8080/v1/chat/completions']);
+  const bare=await send({...ip,baseURL:'http://1.2.3.4',prompt:'hello'});assert.equal(bare.status,200);
+  assert.equal(seen.at(-1),'http://1.2.3.4/v1/chat/completions');
+  assert.equal((await send({...ip,baseURL:'http://169.254.169.254/latest'})).status,400);
+  assert.equal((await send({...ip,baseURL:'http://192.168.1.2:8080/v1'})).status,400);
+  assert.equal((await send({...ip,baseURL:'http://1.2.3.4/v1?x=1'})).status,400);
+  assert.equal((await send({...ip,baseURL:'http://user:pass@1.2.3.4/v1'})).status,400);
+ }finally{globalThis.fetch=original;}
+});
 test('Read models returns choices without claiming a successful generation test',async()=>{const original=globalThis.fetch;try{globalThis.fetch=async(url,opts)=>{assert.match(String(url),/\/models$/);assert.equal(opts.method,'GET');return Response.json({data:[{id:'test-model'}]});};const res=await connect({...config,action:'models'});assert.equal(res.status,200);const data=await res.json();assert.equal(data.models[0].id,'test-model');assert.ok(!('success' in data));}finally{globalThis.fetch=original;}});
