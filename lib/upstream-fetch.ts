@@ -1,4 +1,5 @@
 import { connectHostname, isIpLiteralHost } from './api-address.ts';
+import { loadConnect } from './load-connect.ts';
 
 // Cloudflare Workers reject fetch() to an IP literal. The browser never calls the
 // provider itself (only same-origin /api/*), so an https page can still reach
@@ -77,15 +78,6 @@ export async function httpExchange(socket: SocketLike, url: URL, init: RequestIn
     return await readResponse(reader, signal);
   } finally {
     reader.releaseLock();
-  }
-}
-
-async function loadConnect(): Promise<ConnectFn | null> {
-  try {
-    const mod = await import('cloudflare:sockets');
-    return typeof mod.connect === 'function' ? mod.connect as ConnectFn : null;
-  } catch {
-    return null;
   }
 }
 

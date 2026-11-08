@@ -1,6 +1,8 @@
 # Character Desk · 人物工作台
 
-开源的 SillyTavern 角色卡与世界书创作工作台：[在线使用](https://character-desk.dapper-thyme-4411.chatgpt.site)。可以读取已有设定、生成新设定，参考文本分析人物形象与关系，也可以用游玩反馈和酒馆对话提出局部修订，审核差异后导出 JSON。
+开源的 SillyTavern 角色卡与世界书创作工作台。可以读取已有设定、生成新设定，参考文本分析人物形象与关系，也可以用游玩反馈和酒馆对话提出局部修订，审核差异后导出 JSON。原先的 ChatGPT Sites 地址不能从本仓库重新发布。请用下面的按钮部署到你自己的免费 Vercel 账号（用 GitHub 登录，不需要信用卡）。
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/whorebaby123/character-desk&project-name=character-desk&repository-name=character-desk)
 
 ## 使用方式
 
@@ -30,6 +32,18 @@
 自行部署、并且进程与中转在同一台机器或同一内网时，可以设置环境变量 `ALLOW_PRIVATE_API_HOSTS=1`（或 `true` / `yes`）允许内网和本机地址。云元数据、链路本地、组播和保留网段仍然拒绝。这个开关只有部署者能改，访客不能自己打开。请同时加上身份认证和速率限制；同源检查不等于登录。
 
 Cloudflare Workers 的 `fetch` 不能直接请求 IP。服务器对 IP 字面量改为 TCP 连接，只请求模型列表和生成这两类路径，限制响应体积和 90 秒超时，并且不跟随重定向，避免把密钥转到别的地址。域名仍走 `fetch`。只检查名字本身，不能防止一个公网域名解析到内网地址。
+
+## 部署
+
+新站点放在 [Vercel](https://vercel.com) 的免费 Hobby 计划上：注册就是 **Continue with GitHub**，不需要信用卡。Hobby 上的接口最长可以跑 5 分钟，盖得住这里 90 秒的模型请求。浏览器仍然只访问本站，由服务器去连 `http://公网IP`；在 Vercel 上这条连接走 Node 的普通请求，不依赖 Cloudflare。项目数据只留在浏览器里，部署时不用填模型密钥。
+
+先把本仓库合并进 `main`，然后：
+
+1. 点击上面的 **Deploy with Vercel**。
+2. 选择 **Continue with GitHub**，用 GitHub 登录并授权。
+3. 确认项目名称，点 **Deploy**。
+
+完成后打开 Vercel 给出的 `https://character-desk-….vercel.app`。在「API 设置」里选择「自定义 · OpenAI 兼容」，填 `http://公网IP:端口/v1`。公开站点不要设置 `ALLOW_PRIVATE_API_HOSTS`。
 
 ## 本地开发
 
