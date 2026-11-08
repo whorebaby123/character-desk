@@ -1,3 +1,4 @@
+import { validateApiEndpoint } from './api-address.ts';
 export type Provider = 'gemini' | 'gemini-compatible' | 'deepseek' | 'custom';
 export type AuthMode = 'auto' | 'bearer' | 'x-goog-api-key' | 'x-api-key' | 'key' | 'authorization';
 export type ApiConfig = {
@@ -35,9 +36,7 @@ export function credentialFrom(body:Record<string,unknown>,headers?:Headers):str
   return normalizeKey(body.key||body.Key||body.apiKey||body.api_key||body.authorization||body.Authorization||headers?.get('authorization')||headers?.get('x-goog-api-key')||headers?.get('x-api-key'));
 }
 export function apiBase(config:ApiConfig):URL{
-  let url:URL;try{url=new URL(config.baseURL.trim());}catch{throw Error('请输入有效的 API 地址。');}
-  const h=url.hostname.toLowerCase();if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||(url.port&&url.port!=='443'))throw Error('API 地址需为不含账号、查询参数的 HTTPS 地址（443 端口）。');
-  if(!h.includes('.')||h.includes(':')||/^[\d.]+$/.test(h)||/(^|\.)(localhost|local|internal|test|invalid)$/.test(h))throw Error('请使用公网 API 域名。');
+  const url=validateApiEndpoint(config.baseURL),h=url.hostname.toLowerCase();
   url.pathname=url.pathname.replace(/\/+$/,'').replace(/\/(chat\/completions|models)$/,'');
   if(config.provider==='gemini')url.pathname=url.pathname.replace(/\/openai$/,'').replace(/\/models\/[^/]+:generateContent$/,'');
   if(!url.pathname||url.pathname==='/')url.pathname=config.provider==='gemini'?'/v1beta':config.provider==='gemini-compatible'?'/v1beta/openai':'/v1';

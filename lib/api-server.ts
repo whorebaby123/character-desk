@@ -1,4 +1,5 @@
 import { apiBase, authHeaders, credentialFrom, generationRequest, record, restoreApiConfig, type ApiConfig } from './api-config.ts';
+import { openUpstream, UpstreamHttpError } from './upstream-fetch.ts';
 export class ApiFailure extends Error {
   status:number; code:string; stage:string;
   constructor(message:string,status=400,code='INVALID_CONFIGURATION',stage='configuration'){super(message);this.status=status;this.code=code;this.stage=stage;}
@@ -34,14 +35,14 @@ export async function providerJson(url:URL,key:string,options:RequestInit,reques
   try{
     // Workers supports follow/manual, but rejects redirect:'error' before any I/O.
     // Inspect the response ourselves so credentials never follow a redirect.
-    const response=await fetch(url,{...options,redirect:'manual',signal:controller.signal});
+    const response=await openUpstream(url,{...options,redirect:'manual',signal:controller.signal});
     if(response.status>=300&&response.status<400){
       await response.body?.cancel();
       throw new ApiFailure('API 地址返回了重定向。为避免将密钥转发到其他地址，已停止请求；请填写服务商最终的 API 地址。',502,'UPSTREAM_REDIRECT','provider');
     }
     return await jsonBody(response,key);
   }
-  catch(error){if(error instanceof ApiFailure)throw error;if(timeout)throw new ApiFailure('请求超过 90 秒，请降低思考强度或分模块生成。',504,'TIMEOUT','network');if(controller.signal.aborted)throw new ApiFailure('请求已停止。',499,'CANCELLED','network');throw new ApiFailure('无法连接服务商。请检查 API 地址、认证方式或服务商网络可达性。',502,'NETWORK_ERROR','network');}
+  catch(error){if(error instanceof ApiFailure)throw error;if(error instanceof UpstreamHttpError)throw new ApiFailure(error.message,502,error.code,error.code==='TLS_ERROR'?'network':'provider');if(timeout)throw new ApiFailure('请求超过 90 秒，请降低思考强度或分模块生成。',504,'TIMEOUT','network');if(controller.signal.aborted)throw new ApiFailure('请求已停止。',499,'CANCELLED','network');throw new ApiFailure('无法连接服务商。请检查 API 地址、认证方式或服务商网络可达性。',502,'NETWORK_ERROR','network');}
   finally{clearTimeout(timer);requestSignal.removeEventListener('abort',cancel);}
 }
 export async function generate(config:ApiConfig,key:string,prompt:string,signal:AbortSignal){

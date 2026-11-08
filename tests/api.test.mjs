@@ -21,7 +21,60 @@ test('Automatic and manual auth keep native and compatible protocols distinct',(
  assert.equal(authHeaders({...compatible,authMode:'key'},key).key,key);
  assert.equal(apiBase({...native,baseURL:compatible.baseURL+'/chat/completions'}).pathname,'/v1beta');
  assert.equal(apiBase({...compatible,baseURL:native.baseURL}).pathname,'/v1beta/openai');
- assert.throws(()=>apiBase({...native,baseURL:'https://127.0.0.1/v1'}));
+ assert.throws(()=>apiBase({...native,baseURL:'https://127.0.0.1/v1'}),/内网或本机/);
+});
+test('Plain http IP proxies keep the port and a single /v1 on model and chat requests',async()=>{
+ const custom={...defaultApiConfig,provider:'custom',model:'proxy-model',authMode:'auto'};
+ const forms=['http://1.2.3.4','http://1.2.3.4/','http://1.2.3.4/v1','http://1.2.3.4/v1/'];
+ for(const baseURL of forms){
+  assert.equal(apiBase({...custom,baseURL}).href,'http://1.2.3.4/v1');
+  assert.equal(String(generationRequest({...custom,baseURL},key,'hi').url),'http://1.2.3.4/v1/chat/completions');
+ }
+ assert.equal(apiBase({...custom,baseURL:'http://1.2.3.4:8080/v1/chat/completions'}).href,'http://1.2.3.4:8080/v1');
+ assert.equal(apiBase({...custom,baseURL:'http://1.2.3.4:8080/v1/models'}).pathname,'/v1');
+ assert.equal(String(generationRequest({...custom,baseURL:'https://8.8.8.8:8443'},key,'hi').url),'https://8.8.8.8:8443/v1/chat/completions');
+ const seen=[];
+ const original=globalThis.fetch;
+ try{
+  globalThis.fetch=async(url,opts)=>{seen.push({url:String(url),method:opts.method,redirect:opts.redirect,auth:opts.headers.Authorization});
+   if(String(url).endsWith('/models'))return Response.json({data:[{id:'proxy-model'}]});
+   assert.equal(JSON.parse(opts.body).model,'proxy-model');
+   return Response.json({choices:[{finish_reason:'stop',message:{content:'OK'}}]});};
+  const config={...custom,baseURL:'http://1.2.3.4:8080/v1'};
+  assert.deepEqual((await listModels(config,key,signal())).models.map(m=>m.id),['proxy-model']);
+  assert.equal((await generate(config,key,'hi',signal())).text,'OK');
+  assert.deepEqual(seen.map(item=>item.url),['http://1.2.3.4:8080/v1/models','http://1.2.3.4:8080/v1/chat/completions']);
+  assert.equal(seen[0].method,'GET');assert.equal(seen[1].method,'POST');
+  assert.equal(seen[1].auth,`Bearer ${key}`);assert.equal(seen[1].redirect,'manual');
+  const bare={...custom,baseURL:'http://1.2.3.4'};
+  await listModels(bare,key,signal());await generate(bare,key,'hi',signal());
+  assert.deepEqual(seen.slice(2).map(item=>item.url),['http://1.2.3.4/v1/models','http://1.2.3.4/v1/chat/completions']);
+ }finally{globalThis.fetch=original;}
+});
+test('Private, metadata, credential and query targets stay blocked unless the operator flag is set',()=>{
+ const custom={...defaultApiConfig,provider:'custom',model:'m'};
+ const blocked=['http://127.0.0.1/v1','http://127.0.0.1:11434/v1','http://10.0.0.1/v1','http://192.168.1.1:8080/v1','http://172.16.0.1/v1','http://[::1]/v1','http://[fd00::1]/v1','http://localhost/v1','http://router.local/v1','http://2130706433/','http://0x7f000001/','http://0177.0.0.1/','http://127.1/','http://[::ffff:127.0.0.1]/v1','http://[::7f00:1]/','http://[64:ff9b::7f00:1]/','http://[2002:7f00:1::]/'];
+ for(const baseURL of blocked)assert.throws(()=>apiBase({...custom,baseURL}),/内网或本机/);
+ for(const baseURL of ['http://169.254.169.254/latest/meta-data','http://169.254.1.1/','http://[::ffff:169.254.169.254]/','http://0.0.0.0/','http://100.64.0.1/','http://255.255.255.255/','http://224.0.0.1/','http://192.0.2.1/','http://[fe80::1]/','http://metadata.google.internal/','http://example.invalid/','http://1.2.3.4:0/'])assert.throws(()=>apiBase({...custom,baseURL}));
+ assert.throws(()=>apiBase({...custom,baseURL:'http://user:pass@1.2.3.4/v1'}),/账号/);
+ assert.throws(()=>apiBase({...custom,baseURL:'http://1.2.3.4/v1?token=1'}),/查询参数/);
+ assert.throws(()=>apiBase({...custom,baseURL:'http://1.2.3.4/v1#frag'}),/查询参数/);
+ assert.throws(()=>apiBase({...custom,baseURL:'ftp://1.2.3.4/v1'}),/http 或 https/);
+ assert.equal(apiBase({...custom,baseURL:'http://[::ffff:1.2.3.4]:8080/v1'}).href,'http://1.2.3.4:8080/v1');
+ assert.equal(apiBase({...custom,baseURL:'https://[2606:4700:4700::1111]:8443/v1'}).port,'8443');
+ assert.equal(apiBase({...custom,baseURL:'http://172.15.255.255/v1'}).hostname,'172.15.255.255');
+ assert.equal(apiBase({...custom,baseURL:'http://172.32.0.1:9000'}).href,'http://172.32.0.1:9000/v1');
+ const previous=process.env.ALLOW_PRIVATE_API_HOSTS;
+ process.env.ALLOW_PRIVATE_API_HOSTS='1';
+ try{
+  assert.equal(apiBase({...custom,baseURL:'http://127.0.0.1:11434/v1'}).href,'http://127.0.0.1:11434/v1');
+  assert.equal(apiBase({...custom,baseURL:'http://192.168.1.8:8080'}).href,'http://192.168.1.8:8080/v1');
+  assert.equal(apiBase({...custom,baseURL:'http://[::1]:8080/v1'}).hostname,'[::1]');
+  assert.equal(String(generationRequest({...custom,baseURL:'http://10.1.2.3'},key,'hi').url),'http://10.1.2.3/v1/chat/completions');
+  assert.throws(()=>apiBase({...custom,baseURL:'http://169.254.169.254/'}),/不能作为 API 地址/);
+  assert.throws(()=>apiBase({...custom,baseURL:'http://[fe80::1]/'}),/不能作为 API 地址/);
+  assert.throws(()=>apiBase({...custom,baseURL:'http://user:pass@127.0.0.1/v1'}),/账号/);
+ }finally{if(previous===undefined)delete process.env.ALLOW_PRIVATE_API_HOSTS;else process.env.ALLOW_PRIVATE_API_HOSTS=previous;}
 });
 test('Restored configuration migrates legacy fields and remembers credentials only when enabled',()=>{
  assert.equal(restoreApiConfig({baseURL:compatible.baseURL,model:'old-model'}).provider,'gemini-compatible');
