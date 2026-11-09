@@ -8,7 +8,7 @@
 
 2026-11-08 更新：API 地址可以填写公网 IP 和明文 HTTP，包括 `http://1.2.3.4:端口/v1`。浏览器只请求本站，由服务器代为连接，因此公开 HTTPS 站点不会被混合内容策略拦住。公开部署仍拒绝内网、本机、链路本地和云元数据地址；自建时用 `ALLOW_PRIVATE_API_HOSTS=1` 放开内网与本机。Workers 上对 IP 字面量使用 TCP 连接，因为 `fetch` 不能直接请求 IP。
 
-2026-11-08 部署：原 ChatGPT Sites 不能从这个仓库重新发布。新的公开站点用 README 里的 Deploy with Vercel 按钮。Vercel 构建时 `VERCEL=1`，Vite 改走 Nitro，产出 Vercel Build Output；本地开发和 Workers 仍用 Cloudflare 插件。`npm run build` 是 `vinext build`，原来的 Sites 包装脚本是 `npm run build:sites`。Node 版本见 `.node-version`（22）。Hobby 计划不需要信用卡，函数最长 300 秒。公网 IP 在 Vercel 上由 Node `fetch` 直接访问。
+2026-11-09 部署：公开站点是 [https://character-desk.characterdesk.workers.dev](https://character-desk.characterdesk.workers.dev)（Worker 名 `character-desk`，账号的 workers.dev 子域 `characterdesk`，未设置 `ALLOW_PRIVATE_API_HOSTS`）。原 ChatGPT Sites 不能从这个仓库重新发布。自行部署到 Cloudflare Workers：免费账号只用邮箱，不需要手机号或信用卡；账号须已有 workers.dev 子域；用 **Edit Cloudflare Workers** 模板创建 API 令牌，然后 `npm ci`、`npm run build`、`CLOUDFLARE_API_TOKEN=… npx wrangler deploy -c dist/server/wrangler.json`。Vercel 仍可用（保留 `vercel.json`），但不是当前线上发布方式。
 
 预设下拉文案现为“自定义创作预设/破甲预设”。该字段属于用户自填文本，已有项目存储的预设内容与自定义名称保持原样，不会因文案更新被覆盖。源码和使用说明以 MIT 许可证公开发布，GitHub 仓库为 `whorebaby123/character-desk`。
 
